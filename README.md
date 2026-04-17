@@ -45,11 +45,6 @@ Key `.env` settings:
 Transparent images are resized and blurred with alpha-aware processing to avoid dark edge halos.
 If you export to `jpeg`, transparency is flattened because JPEG does not support alpha.
 
-Notes:
-
-- `QUALITY` is the main compression knob. Higher usually means better quality and larger files.
-- The sample `.env` keeps the main settings first and the optional advanced settings below them.
-
 
 ## Blur Images
 
