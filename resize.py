@@ -4,10 +4,12 @@ Multi-Resolution Image Resizer
 - Reads target resolutions from .env
 - Supports multiple resize strategies:
   - cover: fill target and crop excess
+  - cropping: alias for cover
   - pad: keep full content and add padding to reach the exact target size
   - contain: keep full content without padding (output may be smaller)
 - Supports configurable output compression and export format conversion
 - Supports custom output folder labels and prefixes
+- Resizes transparent images with premultiplied alpha to avoid dark edge halos
 
 Install dependencies:
     pip install Pillow python-dotenv
@@ -97,6 +99,17 @@ def clamp_int(raw: str, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, value))
 
 
+def percent_to_native_scale(percent: int, maximum: int) -> int:
+    """Convert a friendly 1-100 scale into a codec-native range like 0-9."""
+    if maximum <= 0:
+        return 0
+    if percent <= 1:
+        return 0
+
+    # Ceil-style mapping keeps high values feeling meaningfully "high".
+    return min(maximum, ((percent - 1) * maximum + 98) // 99)
+
+
 def parse_padding_color(raw: str, has_alpha: bool) -> tuple[int, ...]:
     """Parse padding color from 'R,G,B[,A]' or 'transparent'."""
     value = raw.strip()
@@ -128,6 +141,19 @@ def parse_padding_color(raw: str, has_alpha: bool) -> tuple[int, ...]:
         channels.append(255)
 
     return tuple(channels)
+
+
+def normalize_resize_mode(raw: str) -> str:
+    """Map friendly RESIZE_MODE aliases to the internal mode names."""
+    value = raw.strip().lower()
+    aliases = {
+        "cover": "cover",
+        "crop": "cover",
+        "cropping": "cover",
+        "pad": "pad",
+        "contain": "contain",
+    }
+    return aliases.get(value, value)
 
 
 def parse_resolutions(raw: str) -> list[tuple[int, int]]:
@@ -231,7 +257,7 @@ def cover_resize(
         f"crop: {pixels_cropped_x}px horizontal, {pixels_cropped_y}px vertical"
     )
 
-    resized = img.resize((scaled_w, scaled_h), RESAMPLE_LANCZOS)
+    resized = resize_image(img, (scaled_w, scaled_h))
     box = get_crop_box(scaled_w, scaled_h, target_w, target_h, anchor)
     return resized.crop(box)
 
@@ -274,7 +300,7 @@ def contain_resize(
     scaled_h = round(src_h * scale)
 
     print(f"      scale={scale:.4f} -> {scaled_w}x{scaled_h}  crop: 0px")
-    return img.resize((scaled_w, scaled_h), RESAMPLE_LANCZOS)
+    return resize_image(img, (scaled_w, scaled_h))
 
 
 def pad_resize(
@@ -324,6 +350,29 @@ def normalize_image(original_img: Image.Image) -> Image.Image:
         return img.convert("RGBA")
 
     return img.convert("RGB")
+
+
+def has_transparency(img: Image.Image) -> bool:
+    """Return True when the image contains any non-opaque pixels."""
+    if "A" not in img.getbands():
+        return "transparency" in img.info
+
+    alpha_extrema = img.getchannel("A").getextrema()
+    if not alpha_extrema:
+        return False
+
+    alpha_min, _ = alpha_extrema
+    return alpha_min < 255
+
+
+def resize_image(img: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """
+    Resize with premultiplied alpha for transparent images to avoid edge halos.
+    """
+    if "A" in img.getbands():
+        return img.convert("RGBa").resize(size, RESAMPLE_LANCZOS).convert("RGBA")
+
+    return img.resize(size, RESAMPLE_LANCZOS)
 
 
 def flatten_for_jpeg(img: Image.Image, background: tuple[int, int, int]) -> Image.Image:
@@ -412,6 +461,11 @@ def build_save_plan(
     target_format = format_name
 
     if target_format == "JPEG" or (target_format is None and source_ext in {".jpg", ".jpeg"}):
+        if has_transparency(result):
+            print(
+                "      [INFO] JPEG does not support transparency; "
+                f"flattening alpha onto {pad_color[:3]}."
+            )
         prepared = flatten_for_jpeg(result, pad_color[:3]).convert("RGB")
         save_kwargs = {
             "quality": jpeg_quality,
@@ -448,24 +502,27 @@ def main() -> None:
     output_folder_prefix = os.getenv("OUTPUT_FOLDER_PREFIX", "")
     input_dir = resolve_config_path(os.getenv("INPUT_DIR", "input"), "input")
     output_dir = resolve_config_path(os.getenv("OUTPUT_DIR", "resize_output"), "resize_output")
-    quality = int(os.getenv("QUALITY", "92"))
-    resize_mode = os.getenv("RESIZE_MODE", "cover").strip().lower()
+    quality = clamp_int(os.getenv("QUALITY", "90"), 90, 1, 100)
+    raw_resize_mode = os.getenv("RESIZE_MODE", "cover")
+    resize_mode = normalize_resize_mode(raw_resize_mode)
     output_format = os.getenv("OUTPUT_FORMAT", "original").strip().lower()
     anchor = os.getenv("CROP_ANCHOR", "center")
     raw_pad_color = os.getenv("PAD_COLOR", "")
-    jpeg_quality = clamp_int(os.getenv("JPEG_QUALITY", str(quality)), quality, 1, 100)
+    jpeg_quality = quality
     jpeg_progressive = parse_bool(os.getenv("JPEG_PROGRESSIVE", "true"), True)
     jpeg_subsampling = parse_jpeg_subsampling(os.getenv("JPEG_SUBSAMPLING", "4:4:4"))
-    png_compress_level = clamp_int(os.getenv("PNG_COMPRESS_LEVEL", "9"), 9, 0, 9)
+    png_compression = quality
+    png_compress_level = percent_to_native_scale(png_compression, 9)
     png_quantize_colors = clamp_int(os.getenv("PNG_QUANTIZE_COLORS", "0"), 0, 0, 256)
     png_dither = parse_bool(os.getenv("PNG_DITHER", "false"), False)
-    webp_quality = clamp_int(os.getenv("WEBP_QUALITY", str(quality)), quality, 1, 100)
-    webp_method = clamp_int(os.getenv("WEBP_METHOD", "6"), 6, 0, 6)
+    webp_quality = quality
+    webp_effort = quality
+    webp_method = percent_to_native_scale(webp_effort, 6)
     webp_lossless = parse_bool(os.getenv("WEBP_LOSSLESS", "false"), False)
 
     valid_modes = {"cover", "pad", "contain"}
     if resize_mode not in valid_modes:
-        print(f"[ERROR] RESIZE_MODE must be one of: {', '.join(sorted(valid_modes))}")
+        print("[ERROR] RESIZE_MODE must be one of: contain, cover, crop, cropping, pad")
         sys.exit(1)
 
     try:
@@ -502,22 +559,29 @@ def main() -> None:
         print(f"[WARN] No supported images found in '{input_dir}'")
         sys.exit(0)
 
+    mode_label = resize_mode
+    if raw_resize_mode.strip().lower() != resize_mode:
+        mode_label = f"{raw_resize_mode.strip().lower()} -> {resize_mode}"
+
     print(f"\n{SEPARATOR}")
     print(f"  Config : {env_path if env_path else 'default environment'}")
     print(f"  Input  : {input_dir.resolve()}")
     print(f"  Output : {output_dir.resolve()}")
-    print(f"  Mode   : {resize_mode}   Anchor: {anchor}")
+    print(f"  Mode   : {mode_label}   Anchor: {anchor}")
     print(f"  Format : {output_format}")
+    print(f"  Quality: {quality}/100")
     print(
-        f"  JPEG   : quality={jpeg_quality} progressive={jpeg_progressive} "
+        f"  JPEG   : quality={jpeg_quality}/100 progressive={jpeg_progressive} "
         f"subsampling={jpeg_subsampling}"
     )
     print(
-        f"  PNG    : compress_level={png_compress_level} "
+        f"  PNG    : compression={png_compression}/100 "
+        f"(level {png_compress_level}/9) "
         f"quantize_colors={png_quantize_colors} dither={png_dither}"
     )
     print(
-        f"  WEBP   : quality={webp_quality} method={webp_method} "
+        f"  WEBP   : quality={webp_quality}/100 "
+        f"effort={webp_effort}/100 (method {webp_method}/6) "
         f"lossless={webp_lossless}"
     )
     print("  Target resolutions:")

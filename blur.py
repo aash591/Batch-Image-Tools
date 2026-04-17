@@ -4,6 +4,7 @@ Interactive Image Blur Tool
 - Works with a single image or a folder of images
 - Supports multiple blur modes
 - Can export multiple blur strengths in one run
+- Preserves transparent edges with premultiplied-alpha blurring
 
 Install dependencies:
     pip install Pillow
@@ -166,6 +167,18 @@ def normalize_image(original_img: Image.Image) -> Image.Image:
     return img.convert("RGB")
 
 
+def has_transparency(img: Image.Image) -> bool:
+    if "A" not in img.getbands():
+        return "transparency" in img.info
+
+    alpha_extrema = img.getchannel("A").getextrema()
+    if not alpha_extrema:
+        return False
+
+    alpha_min, _ = alpha_extrema
+    return alpha_min < 255
+
+
 def flatten_for_jpeg(img: Image.Image) -> Image.Image:
     if "A" not in img.getbands():
         return img.convert("RGB")
@@ -241,11 +254,12 @@ def blur_single_channel(img: Image.Image, mode: str, value: int | float) -> Imag
 
 def apply_blur(img: Image.Image, mode: str, value: int | float) -> Image.Image:
     if "A" in img.getbands():
-        rgb = blur_single_channel(img.convert("RGB"), mode, value)
-        alpha = blur_single_channel(img.getchannel("A"), mode, value)
-        result = rgb.convert("RGBA")
-        result.putalpha(alpha)
-        return result
+        premultiplied = img.convert("RGBa")
+        blurred_channels = [
+            blur_single_channel(channel, mode, value)
+            for channel in premultiplied.split()
+        ]
+        return Image.merge("RGBa", blurred_channels).convert("RGBA")
 
     if img.mode == "L":
         return blur_single_channel(img, mode, value)
@@ -275,6 +289,8 @@ def save_result(img: Image.Image, out_path: Path) -> None:
 
     suffix = out_path.suffix.lower()
     if suffix in {".jpg", ".jpeg"}:
+        if has_transparency(img):
+            print("  [INFO] JPEG does not support transparency; flattening alpha onto white.")
         flatten_for_jpeg(img).save(out_path, quality=92, optimize=True)
         return
 
