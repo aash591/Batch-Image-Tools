@@ -37,9 +37,7 @@ Key `.env` settings:
 - `TARGET_RESOLUTIONS=1080x1920,720x1280`
 - `RESIZE_MODE=cover`, `pad`, or `contain`
 - `OUTPUT_FORMAT=original`, `jpeg`, `png`, or `webp`
-- `INPUT_DIR` and `OUTPUT_DIR` if you want custom folders for each resolution
 
-Output goes to the folder set in `OUTPUT_DIR`.
 
 ## Blur Images
 
