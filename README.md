@@ -67,7 +67,10 @@ The script will ask you for:
 - blur strength or multiple strengths
 - overwrite yes/no
 
+Blur uses `TARGET_RESOLUTIONS`, `OUTPUT_FOLDER_LABELS`, and `OUTPUT_FOLDER_PREFIX` from `.env`.
+It resizes to each target first, then applies the blur.
+
 Blur outputs are grouped like:
 
-`blur_output/gaussian-2/`
+`blur_output/gaussian-2/drawable-xxhdpi-1920x1080/`
 
