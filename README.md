@@ -1,72 +1,109 @@
 # Image Tools
 
-- `resize.py` for batch resizing images using settings from `.env`
-- `blur.py` for interactive image blur
+Simple Python scripts to resize, blur, and compress images in batch.
 
-## Install
+You can run one step at a time, or use the main runner to do multiple steps in one flow.
 
-For Termux (Android), install system dependencies first:
+## What It Can Do
 
-```bash
-pkg update
-pkg install libjpeg-turbo libpng freetype
-```
+- Resize images
+- Blur images
+- Compress images
+- Convert image format
+- Process a single image or a whole folder
 
-Then install Python packages:
+Supported formats:
+
+- `jpg`
+- `jpeg`
+- `png`
+- `webp`
+- `bmp`
+- `tiff`
+
+## Files
+
+- `runme.py` - main interactive tool
+- `resize.py` - resize only
+- `blur.py` - blur only
+- `compress.py` - compress only
+
+## Quick Start
+
+### 1. Install Python packages
 
 ```bash
 pip install Pillow python-dotenv
 ```
 
-## Supported Images
+### 2. Run the main tool
 
-`jpg`, `jpeg`, `png`, `webp`, `bmp`, `tiff`
+```bash
+python runme.py
+```
 
-## Resize Images
+### 3. Follow the prompts
 
-1. Put images in the `input/` folder.
-2. Edit `.env` with the sizes and options you want.
-3. Run:
+The tool will ask you:
+
+- which workflow you want
+- which image or folder to use
+- where to save the output
+- what resize, blur, or compression settings you want
+
+## How To Use
+
+If you just want the easiest way:
+
+1. Put your images in the `input` folder, or choose any image/folder when asked.
+2. Run:
+
+```bash
+python runme.py
+```
+
+3. Pick a workflow:
+   - `Resize`
+   - `Blur`
+   - `Compress`
+   - or a combined workflow like `Resize -> Blur -> Compress`
+4. Answer the prompts.
+5. Check your output folder for the processed images.
+
+## Run Only One Tool
+
+If you want just one operation:
 
 ```bash
 python resize.py
-```
-
-Key `.env` settings:
-
-- `TARGET_RESOLUTIONS=1080x1920,720x1280`
-- `RESIZE_MODE=cover|cropping|pad|contain` where `cover/cropping` fills and crops, `pad` fits with padding, and `contain` fits without padding
-- `OUTPUT_FORMAT=original`, `jpeg`, `png`, or `webp`
-- `QUALITY=90`
-- `OUTPUT_FOLDER_LABELS=1920x1080,1280x720` if you want custom folder names
-- `OUTPUT_FOLDER_PREFIX=drawable-xxhdpi-` if you want a prefix on each output folder
-- Optional advanced settings like `JPEG_PROGRESSIVE`, `JPEG_SUBSAMPLING`, `PNG_QUANTIZE_COLORS`, `PNG_DITHER`, `WEBP_LOSSLESS`, `PAD_COLOR`, and `CROP_ANCHOR`
-
-Transparent images are resized and blurred with alpha-aware processing to avoid dark edge halos.
-If you export to `jpeg`, transparency is flattened because JPEG does not support alpha.
-`QUALITY` is the main compression knob. Higher usually means better quality and larger files.
-
-
-## Blur Images
-
-Run:
-
-```bash
 python blur.py
+python compress.py
 ```
 
-The script will ask you for:
+Each script opens its own simple interactive menu.
 
-- source image or folder
-- output folder
-- blur mode
-- blur strength or multiple strengths
-- overwrite yes/no
+## Optional `.env` Settings
 
-Blur uses `TARGET_RESOLUTIONS`, `OUTPUT_FOLDER_LABELS`, and `OUTPUT_FOLDER_PREFIX` from `.env`.
-It resizes to each target first, then applies the blur.
+You do not need to edit `.env` to use the project.
 
-Blur outputs are grouped like:
+If you want default values, you can add settings like:
 
-`blur_output/gaussian-2/drawable-xxhdpi-1920x1080/`
+```env
+TARGET_RESOLUTIONS=1080x1920,720x1280
+OUTPUT_FOLDER_LABELS=1920x1080,1280x720
+OUTPUT_FOLDER_PREFIX=drawable-xxhdpi-
+```
 
+These values are used as defaults in the interactive prompts.
+
+## Workflow Order
+
+When you choose multiple steps in `runme.py`, the order is always:
+
+`resize -> blur -> compress`
+
+## Notes
+
+- Folder input is processed recursively.
+- Transparent images are handled correctly when possible.
+- JPEG does not support transparency, so transparent areas are flattened when saving as JPEG.
