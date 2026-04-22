@@ -96,11 +96,6 @@ OUTPUT_FOLDER_PREFIX=drawable-xxhdpi-
 
 These values are used as defaults in the interactive prompts.
 
-## Workflow Order
-
-When you choose multiple steps in `runme.py`, the order is always:
-
-`resize -> blur -> compress`
 
 ## Notes
 
